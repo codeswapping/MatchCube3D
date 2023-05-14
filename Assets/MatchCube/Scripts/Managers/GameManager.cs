@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
+using MatchCube.Scripts.Utils;
 using UnityEngine;
 using UnityEngine.Serialization;
 using Random = UnityEngine.Random;
@@ -32,7 +34,7 @@ namespace MatchCube.Scripts.Managers
         
         private float _currentWait;
         private bool _gameStarted = false;
-        
+        private SaveGameData _gameData;
         #endregion
 
         #region Untiy Methods
@@ -49,6 +51,25 @@ namespace MatchCube.Scripts.Managers
             else
             {
                 Instance = this;
+            }
+        }
+
+        private void Start()
+        {
+            _gameData = SaveGameData.Instance;
+            if (_gameData.gameDataExists)
+            {
+                Time.timeScale = 0;
+                _currentWait = _gameData.gameData.CurrentTime;
+                //Box Generation
+                foreach (var box in _gameData.gameData.AllBoxes)
+                {
+                    var cube = Instantiate(boxPrefab, box.BoxPosition, box.BoxRotation).GetComponent<Cube>();
+                    cube.CanMove = box.CanMove;
+                    var rb = cube.GetComponent<Rigidbody>();
+                    rb.velocity = box.BoxVelocity;
+                    rb.angularVelocity = box.BoxTorque;
+                }
             }
         }
 
@@ -134,9 +155,32 @@ namespace MatchCube.Scripts.Managers
             }
         }
 
+        private void OnApplicationPause(bool pauseStatus)
+        {
+            if (pauseStatus)
+            {
+                Time.timeScale = 0;
+                _gameData.gameData.CurrentTime = _currentWait;
+                var boxList = GameObject.FindObjectsOfType<Cube>();
+                _gameData.gameData.AllBoxes = (from cube in boxList
+                    let transform1 = cube.transform
+                    select new BoxData
+                    {
+                        CanMove = cube.CanMove,
+                        BoxPosition = transform1.position,
+                        BoxRotation = transform1.rotation,
+                        BoxTorque = cube.GetComponent<Rigidbody>().angularVelocity,
+                        BoxVelocity = cube.GetComponent<Rigidbody>().velocity
+                    }).ToArray();
+                SaveGameData.SaveGame(_gameData);
+            }
+        }
+
         #endregion
 
-        private void StartGame()
+        #region Public Methods
+        
+        public void StartGame()
         {
             var boxList = GameObject.FindObjectsOfType<Cube>();
             foreach (var c in boxList)
@@ -147,11 +191,19 @@ namespace MatchCube.Scripts.Managers
             setNext = true;
         }
 
+        public void ContinueGame()
+        {
+            _gameStarted = true;
+            Time.timeScale = 1;
+        }
+
         public void SetNextTime()
         {
             setNext = true;
             _currentWait = waitToSpawn;
         }
+        
+        #endregion
         
         [Serializable]
         public struct BoxInfo
